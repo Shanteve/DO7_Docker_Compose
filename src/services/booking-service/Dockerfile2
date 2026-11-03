@@ -1,0 +1,18 @@
+FROM maven:3.9-eclipse-temurin-8 AS builder
+
+WORKDIR /app
+COPY pom.xml wait-for-it.sh ./
+RUN mvn dependency:go-offline -B
+COPY src/ src/
+RUN mvn package -DskipTests -B
+
+RUN groupadd --system appgroup && \
+    useradd --system --gid appgroup --home /app --shell /sbin/nologin appuser && \
+    chmod 755 /app/target/*.jar
+
+EXPOSE 8083
+USER appuser
+
+CMD ["./wait-for-it.sh", "-t", "60", "postgres:5432", "--", \
+    "./wait-for-it.sh", "-t", "60", "rabbitmq:5672", "--", \
+    "java", "-jar", "app.jar"]

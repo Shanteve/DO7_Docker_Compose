@@ -1,0 +1,46 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
+  config.vm.provision "file", source: ".env", destination: "/home/vagrant/.env"
+  config.vm.provision "shell", path: "install_docker.sh"
+
+  # manager01
+  config.vm.define "manager01" do |manager|
+    manager.vm.provision "file", source: "docker-compose.yml", destination: "/home/vagrant/docker-compose.yml"
+    manager.vm.provision "file", source: "./services/database/init.sql", destination: "/home/vagrant/services/database/init.sql"
+    manager.vm.provision "file", source: "portainer.yml", destination: "/home/vagrant/portainer.yml"
+    manager.vm.provision "file", source: "nginx.conf", destination: "/home/vagrant/nginx.conf"
+    manager.vm.provision "shell", path: "manager.sh"
+    manager.vm.hostname = "manager01"
+    manager.vm.network "private_network", ip: "192.168.56.10"
+    manager.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+      vb.cpus = 2
+      vb.name = "manager01"
+    end
+  end
+
+  # worker01
+  config.vm.define "worker01" do |worker01|
+    worker01.vm.hostname = "worker01"
+    worker01.vm.network "private_network", ip: "192.168.56.11"
+    worker01.vm.provision "shell", path: "worker.sh"
+    worker01.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+      vb.cpus = 2
+      vb.name = "worker01"
+    end
+  end
+
+  # worker02
+  config.vm.define "worker02" do |worker02|
+    worker02.vm.hostname = "worker02"
+    worker02.vm.network "private_network", ip: "192.168.56.12"
+    worker02.vm.provision "shell", path: "worker.sh"
+    worker02.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+      vb.cpus = 2
+      vb.name = "worker2"
+    end
+  end
+end

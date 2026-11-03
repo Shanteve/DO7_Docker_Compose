@@ -1,0 +1,185 @@
+services:
+  postgres:
+    image: postgres:18.4-alpine3.23
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    restart: unless-stopped
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - ./services/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg_data:/var/lib/postgresql
+    networks:
+      - services_network
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBIT_MQ_HOST: ${RABBIT_MQ_HOST}
+      RABBIT_MQ_PASSWORD: ${RABBIT_MQ_PASSWORD}
+    restart: unless-stopped
+    expose:
+      - 5672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - services_network
+
+  session-service:
+    build: ./services/session-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  hotel-service:
+    build: ./services/hotel-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - 8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  booking-service:
+    build: ./services/booking-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      RABBIT_MQ_HOST: ${RABBIT_MQ_HOST}
+      RABBIT_MQ_PORT: ${RABBIT_MQ_PORT}
+      RABBIT_MQ_USER: ${RABBIT_MQ_USER}
+      RABBIT_MQ_PASSWORD: ${RABBIT_MQ_PASSWORD}
+      RABBIT_MQ_QUEUE_NAME: ${RABBIT_MQ_QUEUE_NAME}
+      RABBIT_MQ_EXCHANGE: ${RABBIT_MQ_EXCHANGE}
+      HOTEL_SERVICE_HOST: ${HOTEL_SERVICE_HOST}
+      HOTEL_SERVICE_PORT: ${HOTEL_SERVICE_PORT}
+      PAYMENT_SERVICE_HOST: ${PAYMENT_SERVICE_HOST}
+      PAYMENT_SERVICE_PORT: ${PAYMENT_SERVICE_PORT}
+      LOYALTY_SERVICE_HOST: ${LOYALTY_SERVICE_HOST}
+      LOYALTY_SERVICE_PORT: ${LOYALTY_SERVICE_PORT}
+    expose:
+      - 8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  payment-service:
+    build: ./services/payment-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - 8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  loyalty-service:
+    build: ./services/loyalty-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - 8085
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  report-service:
+    build: ./services/report-service
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      RABBIT_MQ_HOST: ${RABBIT_MQ_HOST}
+      RABBIT_MQ_PORT: ${RABBIT_MQ_PORT}
+      RABBIT_MQ_USER: ${RABBIT_MQ_USER}
+      RABBIT_MQ_PASSWORD: ${RABBIT_MQ_PASSWORD}
+      RABBIT_MQ_QUEUE_NAME: ${RABBIT_MQ_QUEUE_NAME}
+      RABBIT_MQ_EXCHANGE: ${RABBIT_MQ_EXCHANGE}
+    expose:
+      - 8086
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - services_network
+
+  gateway-service:
+    build: ./services/gateway-service
+    environment:
+      SESSION_SERVICE_HOST: ${SESSION_SERVICE_HOST}
+      SESSION_SERVICE_PORT: ${SESSION_SERVICE_PORT}
+      HOTEL_SERVICE_HOST: ${HOTEL_SERVICE_HOST}
+      HOTEL_SERVICE_PORT: ${HOTEL_SERVICE_PORT}
+      BOOKING_SERVICE_HOST: ${BOOKING_SERVICE_HOST}
+      BOOKING_SERVICE_PORT: ${BOOKING_SERVICE_PORT}
+      PAYMENT_SERVICE_HOST: ${PAYMENT_SERVICE_HOST}
+      PAYMENT_SERVICE_PORT: ${PAYMENT_SERVICE_PORT}
+      LOYALTY_SERVICE_HOST: ${LOYALTY_SERVICE_HOST}
+      LOYALTY_SERVICE_PORT: ${LOYALTY_SERVICE_PORT}
+      REPORT_SERVICE_HOST: ${REPORT_SERVICE_HOST}
+      REPORT_SERVICE_PORT: ${REPORT_SERVICE_PORT}
+    ports:
+      - "8087:8087"
+    networks:
+      - services_network
+
+networks:
+  services_network:
+    driver: bridge
+  
+volumes:
+  pg_data:
+  rabbitmq_data:
