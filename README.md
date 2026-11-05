@@ -1,93 +1,442 @@
-# The basics of container orchestration
+# DO7_Docker_Compose — контейнеризация микросервисов и оркестрация с Docker Swarm
 
-The use of Docker Compose and Docker Swarm tools to run containers together and orchestrate them in a simple way.
+<p align="center">
+  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker%20Swarm-2496ED?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Vagrant-1868F2?logo=vagrant&logoColor=white" />
+  <img src="https://img.shields.io/badge/Java-ED8B00?logo=openjdk&logoColor=white" />
+  <img src="https://img.shields.io/badge/Maven-C71A36?logo=apachemaven&logoColor=white" />
+  <img src="https://img.shields.io/badge/Nginx-009639?logo=nginx&logoColor=white" />
+  <img src="https://img.shields.io/badge/Portainer-13BEF9?logo=portainer&logoColor=white" />
+</p>
 
-💡 [Tap here](https://new.oprosso.net/p/4cb31ec3f47a4596bc758ea1861fb624) **to leave your feedback on the project**. It's anonymous and will help our team make your educational experience better. We recommend completing the survey immediately after the project.
+> **Полезные материалы**
+>
+> - [Полное задание School 21](README_RUS.md) — исходные требования и описание всех частей проекта.
+> - [Подробный отчёт о выполнении](src/REPORT.MD) — ход работы, конфигурации и скриншоты результатов.
 
-## Contents
+## О проекте
 
-1. [Chapter I](#chapter-i)
-2. [Chapter II](#chapter-ii) \
-   2.1. [Running multiple Docker containers using Docker Compose](#part-1-running-multiple-docker-containers-using-docker-compose-docker-compose) \
-   2.2. [Creating virtual machines](#part-2-creating-virtual-machines) \
-   2.3. [Creating a simple Docker Swarm](#part-3-creating-a-simple-docker-swarm)
+**DO7_Docker_Compose** — учебный проект School 21, посвящённый контейнеризации микросервисного приложения и его развёртыванию в распределённом Docker Swarm-кластере.
 
-## Instructions
+Работа построена как последовательное усложнение инфраструктуры: сначала приложение запускается локально с помощью Docker Compose, затем переносится в виртуальную машину, после чего разворачивается на трёх узлах Docker Swarm.
 
-How to learn at “School 21”:
+Приложение состоит из Java-сервисов, PostgreSQL и RabbitMQ. Для сборки Java-приложений используются multi-stage Dockerfile на базе Maven и Eclipse Temurin. В Swarm-кластере взаимодействие сервисов организовано через overlay network, а внешний доступ к `session-service` и `gateway-service` предоставляется через Nginx reverse proxy. Для визуального контроля кластера развёрнут Portainer.
 
-- Here, you’ll find a unique learning experience with a lot of freedom. You’re given a task and left to find your own way to solve it, using whatever resources work best for you — whether that’s the Internet or AI tools like GigaChat. Just be mindful of information quality: verify, think critically, analyze, and compare.
-- Peer-to-peer (P2P) learning is the exchange of knowledge and experience with peers, where everyone acts as both mentor and student. This approach allows you to gain a deeper understanding of the material by learning from one another.
-- Feel free to ask for help: around you are peers who are also navigating this path for the first time. Share your own experience and ideas with others.  Join Rocket.Chat to stay updated with the latest community announcements. 
-- Your learning is meaningless if you just copy someone else’s solutions. When receiving help from others, always make sure you fully understand the “why”, “how”, and “purpose” behind the solution. Don’t be afraid to make mistakes. 
-- Does the task seem impossible? Take a break, get some fresh air and clear your mind — this has helped many people. Maybe after that, the solution will come to you naturally.
-- The learning process is just as important as the result. It’s not just about completing the task — it’s about understanding HOW to solve it. 
+Данный проект демонстрирует мои практические навыки контейнеризации, сетевого взаимодействия контейнеров, подготовки инфраструктуры и оркестрации сервисов. Он не позиционируется как отказоустойчивая production-платформа.
 
-How to work with the project:
+## Кратко о технологиях
 
-- Before starting, clone the project from GitLab into a repository with the same name.
-- All files should be created inside the _src/_ folder of the cloned repository.
-- After cloning the project, create a _develop_ branch and do all your development there. Then, push the _develop_ branch to GitLab.
-- Your directory should not contain any files other than those specified in the assignments.
+| Область | Инструменты |
+|---|---|
+| Контейнеризация | Docker |
+| Локальная оркестрация | Docker Compose |
+| Кластерная оркестрация | Docker Swarm |
+| Виртуализация и подготовка VM | Vagrant, VirtualBox |
+| Операционная система узлов | Ubuntu Server 24.04 LTS |
+| Backend-сервисы | Java, Spring Boot |
+| Сборка Java-приложений | Maven |
+| База данных | PostgreSQL |
+| Очереди сообщений | RabbitMQ |
+| Reverse proxy | Nginx |
+| Управление Swarm | Portainer |
+| Проверка API | Postman |
 
-## Chapter I
+## Архитектура
 
-As you already know, **Docker** is a platform for building, running, and *delivering* applications, designed to run software almost regardless of the machine on which it will physically run. This is achieved by *containerizing* the software, which means placing the executable code in a separate environment called a *container* containing all the necessary dependencies and, if the container image is well composed, nothing else. 
+### Этап 1. Локальный запуск через Docker Compose
 
-However, the problem with dependencies is more serious than you might think. It's not just missing files or library versions, but also language versions and environment variable values, which can significantly affect the performance of the software, if not break it completely. The container guarantees *the same* execution of the containerized software on any machine, because it has everything needed for consistent operation. This is especially useful for web services that require frequent updates and deployment on different servers. 
+На первом этапе все компоненты запускаются на одной машине в общей bridge-сети Docker Compose.
 
-Usually, a serious application does not consist of a single program, i.e. it does not have a monolithic structure, but a microservice one. Although each service can technically be deployed in a same container, this is not in line with SOLID principles or clean architecture in general. For example, this approach makes it practically impossible or significantly more difficult to deploy a new version of a separate microservice. You need to remember the basic rule of containerization: **"1 microservice — 1 container"**. 
+В состав приложения входят:
 
-Now that the rule about distributing microservices to containers has been defined, it is worth recalling another tool — **Docker Compose**, which allows you to run several containers together. **Docker Compose** not only allows you to run multiple Docker containers simultaneously, but also provides the ability to define their interaction, which is a necessary condition for deploying a microservice application.
+- `session-service` — сервис сессий
+- `hotel-service` — сервис отелей
+- `booking-service` — сервис бронирования
+- `payment-service` — сервис платежей
+- `loyalty-service` — сервис программы лояльности
+- `report-service` — сервис отчётов
+- `gateway-service` — API Gateway
+- `postgres` — база данных PostgreSQL
+- `rabbitmq` — брокер сообщений
+- `nginx` — внешний прокси в Swarm-конфигурации
 
-However, **Docker Compose** alone allows you to run containers on only one machine. In reality, microservices applications are distributed on different machines: real or virtual, it does not matter. Usually, of course, these turn out to be virtual machines, but not necessarily all the virtual machines used by the same software are on the same real machine. Often this is not even the case. This is where **Docker Swarm** comes in. In general, the phrase **Docker Swarm** means both a group of machines combined into one *cluster*, with docker containers running on them linked together, and a tool which combines the machines into such a *cluster*. A *cluster* is a combination of machines or *nodes* into a single network with the load distributed over these nodes in the form of applications executed in containers. Special programs called orchestrators are responsible for running and curating such a cluster. **Docker Swarm** is just one of them. **Docker Swarm** is a relatively simple and easy to learn orchestrator with all the basic tools.
+В локальной конфигурации для доступа с хоста публикуются порты `8081` сервиса сессий и `8087` Gateway. Остальные backend-сервисы доступны внутри сети Compose.
 
-Finally, where do we get the machines that will be used as the basis for cluster nodes? The answer: virtualization. One of the most popular and simple tools for creating virtual machines is **Vagrant**. **Vagrant** allows you to quickly, with just a couple of commands, create multiple small virtual machines.
+### Этап 2. Docker Swarm из трёх узлов
 
-## Chapter II
+Для кластерного развёртывания создаются три виртуальные машины:
 
-The result of the work must be a report with detailed descriptions of the implementation of each of the points with screenshots. The report is prepared as a markdown file in the `src` directory named `REPORT.MD`.
+| Узел | IP-адрес | Роль |
+|---|---|---|
+| `manager01` | `192.168.56.10` | Swarm manager |
+| `worker01` | `192.168.56.11` | Swarm worker |
+| `worker02` | `192.168.56.12` | Swarm worker |
 
-## Part 1. Running multiple docker containers using Docker Compose
+### Сетевое взаимодействие
 
-It is worth recalling how Docker Compose works! First, let's try to run the microservice application from the `src` folder so that the Postman tests are successful.
+В Swarm-конфигурации используется сеть `services_network` с драйвером `overlay`. Она позволяет сервисам, размещённым на разных узлах кластера, взаимодействовать друг с другом по DNS-именам сервисов.
 
-### Task
+Внешний Nginx подключён к той же overlay-сети и проксирует запросы:
 
-1) Write a Dockerfile for each individual microservice. The necessary dependencies are described in the materials. Write the size of the built images of any service in the report in different ways.
+- порт `8081` → `session-service:8081`
+- порт `8087` → `gateway-service:8087`
 
-2) Write a Docker Compose file that correctly interacts with services. Forward the ports to access gateway and session services from the local machine. Help with the Docker Compose can be found in the materials.
+Порты самих `session-service` и `gateway-service` в Swarm-файле не публикуются на хост. Таким образом, внешняя точка входа проходит через Nginx, а backend-сервисы остаются доступны через внутреннюю сеть кластера.
 
-3) Build and deploy a web service using a Docker Compose file written on the local machine.
+## Что было реализовано
 
-4) Run the tests that you have prepared using Postman and ensure that they are all successful. Instructions on how to run tests can be found in materials. Record the test results in a report. 
+### 1. Контейнеризация Java-микросервисов
 
-## Part 2. Creating virtual machines
+Для каждого микросервиса подготовлен отдельный Dockerfile:
 
-It's time to prepare the base for future cluster nodes. Let's create a virtual machine.
+- `session-service`
+- `hotel-service`
+- `booking-service`
+- `payment-service`
+- `loyalty-service`
+- `report-service`
+- `gateway-service`
 
-### Task
+Для сборки используется Maven и Java 8 (Eclipse Temurin).
 
-1) Install and initialize Vagrant in the root of your project. Create a Vagrantfile for one virtual machine. Move the source code for the web service into the working directory of the virtual machine. For help with Vagrant, check the materials. 
+Dockerfile построены по multi-stage подходу.
 
-2) Use the console to enter the virtual machine to make sure the source code has been copied. Stop and delete the virtual machine when you're done. 
+**Этап сборки:**
 
-## Part 3. Creating a simple Docker Swarm
+- используется образ `maven:3.9-eclipse-temurin-8`
+- копируется `pom.xml`
+- Maven заранее загружает зависимости командой `mvn dependency:go-offline`
+- копируется исходный код
+- собирается JAR-файл командой `mvn package -DskipTests -B`
 
-Now it's time to create your first Docker Swarm!
+**Этап запуска:**
 
-### Task
+- используется runtime-образ Eclipse Temurin JRE на базе Ubuntu Jammy
+- в образ копируется только собранный JAR
+- создаётся системный пользователь `appuser` и группа `appgroup`
+- приложение запускается от непривилегированного пользователя
+- для сервисов, зависящих от PostgreSQL и RabbitMQ, используется `wait-for-it.sh`
 
-1) Modify the Vagrantfile to create three virtual machines: manager01, worker01 and worker02, and write shell scripts to install Docker inside each machine, initialize and connect them to Docker Swarm. Help on Docker Swarm can be found in the materials.
+В отчёте приведено сравнение размера обычной и multi-stage сборки: итоговый образ в рассмотренном примере получился почти в 2,5 раза меньше.
 
-2) Load the built images on the Docker Hub and modify the Docker Compose file to load these images.
+Это показывает практическую пользу разделения build- и runtime-окружений: Maven и инструменты сборки не нужны для запуска готового Java-приложения.
 
-3) Run virtual machines, move the Docker Compose file to manager, and run the service stack with the Docker Composed file you created.
+### 2. Локальный запуск приложения через Docker Compose
 
-4) Configure an Nginx-based proxy for accessing the gateway and session services via the overlay network, making the gateway and sessions services themselves unavailable directly.
+На первом этапе создан `docker-compose_task1.yml`, который описывает запуск приложения на одной машине.
 
-5) Run prepared tests using Postman and ensure they all are successful. Record the results in a report. 
+В конфигурации определены:
 
-6) Using Docker commands, display the distribution of containers across nodes in the cluster in the report.
+- PostgreSQL с инициализацией базы через `init.sql`
+- RabbitMQ
+- семь Java-микросервисов
+- общая bridge-сеть `services_network`
+- именованные volumes для данных PostgreSQL и RabbitMQ
+- healthcheck для PostgreSQL и RabbitMQ
+- зависимости сервисов от готовности инфраструктурных компонентов через `depends_on` с `condition: service_healthy`
 
-7) Install a separate Portainer stack inside the cluster. Show the visualization of the distribution of workloads across nodes using Portainer in the report. 
+Для проверки локального запуска опубликованы порты сервисов `session-service` и `gateway-service`. После сборки и запуска приложения были выполнены подготовленные Postman-тесты. В отчёте указано, что все тесты прошли успешно.
+
+### 3. Подготовка виртуальных машин с помощью Vagrant
+
+Для воспроизводимого создания инфраструктуры написан `Vagrantfile`.
+
+На первом шаге создавалась одна VM Ubuntu Server 24.04 LTS с передачей исходного кода приложения в виртуальную машину.
+
+Затем конфигурация была расширена до трёх узлов:
+
+- `manager01`;
+- `worker01`;
+- `worker02`.
+
+Для VM заданы статические адреса приватной сети и параметры CPU/RAM. Установка Docker автоматизирована скриптом `install_docker.sh`, который подключает официальный репозиторий Docker и устанавливает Docker Engine, CLI, containerd, Buildx и Compose plugin.
+
+Использование Vagrant позволяет пересоздавать лабораторную инфраструктуру командами, а не настраивать каждую виртуальную машину вручную.
+
+### 4. Инициализация Docker Swarm
+
+На `manager01` выполняется инициализация Swarm:
+
+```bash
+docker swarm init --advertise-addr 192.168.56.10
+```
+
+После инициализации manager получает join-токен для worker-узлов. Скрипт `manager.sh` сохраняет его в файл, а `worker.sh` ожидает появления файла и выполняет подключение worker к manager.
+
+Таким образом, создание кластера автоматизировано shell-скриптами, запускаемыми при provisioning Vagrant.
+
+### 5. Публикация образов и развёртывание Stack
+
+Для кластерного развёртывания Compose-файл был адаптирован: вместо локальной сборки сервисы используют готовые образы из Docker Hub, например `shanteve/booking-service:1.0`.
+
+На manager размещаются Compose-файл, конфигурация Nginx, SQL-инициализация и файл переменных окружения. Затем приложение разворачивается как Docker Stack.
+
+В конфигурации Swarm:
+
+- PostgreSQL и RabbitMQ имеют по одной реплике;
+- для PostgreSQL и RabbitMQ задано ограничение размещения `node.role == manager`;
+- backend-сервисы подключены к overlay-сети;
+- Nginx также размещается на manager и публикует порты `8081` и `8087`.
+
+Это демонстрирует использование Swarm scheduling constraints и отличие кластерного развёртывания от локального Docker Compose.
+
+### 6. Настройка Nginx reverse proxy
+
+В кластер добавлен отдельный сервис Nginx. Его конфигурация монтируется в контейнер только для чтения:
+
+```yaml
+volumes:
+  - ./nginx.conf:/etc/nginx/nginx.conf:ro
+```
+
+Для разрешения DNS-имён контейнеров используется встроенный DNS Docker:
+
+```nginx
+resolver 127.0.0.11 valid=10s ipv6=off;
+```
+
+Nginx принимает запросы на портах `8081` и `8087` и передаёт их соответствующим backend-сервисам по overlay-сети.
+
+Публикуются только порты Nginx. Прямой доступ к `session-service` и `gateway-service` через опубликованные порты не предоставляется.
+
+### 7. Проверка приложения через Postman
+
+После развёртывания стека в Swarm были повторно запущены подготовленные Postman-тесты.
+
+Для тестирования с локальной машины значение `API_HOST` было изменено с `localhost` на IP-адрес manager-узла `192.168.56.10`.
+
+В отчёте зафиксирован успешный результат выполнения тестов после переноса приложения в кластер.
+
+### 8. Проверка распределения задач по узлам
+
+Для проверки состояния кластера использовались команды Docker, позволяющие получить список узлов и размещение задач сервисов.
+
+Это позволяет увидеть, на каких узлах Swarm запущены контейнеры, и проверить, что workload распределяется между manager и worker-узлами в соответствии с настройками и ограничениями размещения.
+
+### 9. Визуализация кластера с помощью Portainer
+
+Для визуального управления кластером был развёрнут отдельный Docker Stack с Portainer CE и Portainer Agent.
+
+В конфигурации:
+
+- Portainer Agent запускается в режиме `global` — по одной задаче на каждом подходящем узле
+- Agent получает доступ к Docker socket и каталогу Docker volumes
+- Portainer Server запускается одной репликой на manager
+- Portainer Server подключается к агентам через `tasks.agent:9001`
+- данные Portainer сохраняются в отдельном volume `portainer_data`
+
+Через веб-интерфейс Portainer была проверена визуализация распределения задач по узлам кластера.
+
+## Ключевые технические решения
+
+| Решение | Зачем оно используется |
+|---|---|
+| Отдельный контейнер для каждого микросервиса | Разделить жизненный цикл и окружение компонентов приложения. |
+| Multi-stage Dockerfile | Не включать Maven и build-инструменты в runtime-образ. |
+| Непривилегированный `appuser` | Снизить привилегии Java-процессов внутри контейнеров. |
+| Docker Compose на первом этапе | Проверить взаимодействие сервисов на одной машине до перехода к кластеру. |
+| Vagrant provisioning | Воспроизводимо создавать виртуальные машины и настраивать Docker. |
+| Docker Swarm | Разворачивать сервисы на нескольких узлах и управлять их задачами. |
+| Overlay network | Обеспечить сетевое взаимодействие контейнеров на разных узлах. |
+| Placement constraints | Размещать stateful-компоненты и Nginx на manager-узле согласно заданной конфигурации. |
+| Nginx reverse proxy | Предоставить единую внешнюю точку входа для session и gateway сервисов. |
+| Portainer Agent в режиме global | Получать данные о Docker-окружении на каждом узле. |
+
+## Запуск проекта
+
+### Требования
+
+- Vagrant
+- VirtualBox с поддержкой архитектуры хоста
+- Docker Engine и Docker CLI
+- доступ к Docker Hub для загрузки образов
+- Postman для запуска предоставленной коллекции тестов
+
+В проекте используется box `bento/ubuntu-24.04`. В исходной лабораторной среде он был выбран с учётом ARM64-хоста MacBook на Apple M1.
+
+### Локальный запуск через Docker Compose
+
+Перейдите в каталог `src`:
+
+```bash
+cd src
+```
+
+Подготовьте файл окружения на основе шаблона:
+
+```bash
+cp .env.example .env
+```
+
+Заполните параметры подключения к PostgreSQL, RabbitMQ и внутренним сервисам. Не используйте учебные пароли в публичном или production-окружении.
+
+Соберите и запустите приложение:
+
+```bash
+docker compose -f docker-compose_task1.yml build
+docker compose -f docker-compose_task1.yml up -d
+```
+
+Проверьте состояние контейнеров:
+
+```bash
+docker compose -f docker-compose_task1.yml ps
+```
+
+Остановите приложение:
+
+```bash
+docker compose -f docker-compose_task1.yml down
+```
+
+### Создание Swarm-кластера
+
+Из каталога `src`:
+
+```bash
+vagrant up
+```
+
+Проверьте созданные виртуальные машины:
+
+```bash
+vagrant status
+```
+
+Подключитесь к manager:
+
+```bash
+vagrant ssh manager01
+```
+
+Проверить состояние кластера можно командами:
+
+```bash
+docker node ls
+docker service ls
+docker stack ls
+docker stack services <stack_name>
+docker stack ps <stack_name>
+```
+
+Для запуска Stack на manager используется подготовленный `docker-compose.yml`:
+
+```bash
+docker stack deploy -c docker-compose.yml <stack_name>
+```
+
+Имя Stack и значения переменных окружения должны соответствовать вашей конфигурации. Перед запуском убедитесь, что образы доступны в Docker Hub, а `.env` и необходимые файлы находятся на manager.
+
+### Portainer
+
+Portainer разворачивается отдельным Stack из `portainer.yml`:
+
+```bash
+docker stack deploy -c portainer.yml portainer
+```
+
+В текущей конфигурации веб-интерфейс Portainer публикуется на портах `9443`, `9000` и `8000`. Для доступа используйте адрес manager-узла и соответствующий порт.
+
+> Команды выше описывают общий порядок запуска по конфигурации проекта. Для полного повторения лабораторной работы следуйте последовательности и подготовке файлов из [подробного отчёта](src/REPORT.MD).
+
+## Структура репозитория
+
+```text
+DO7_Docker_Compose/
+├── README.md
+├── README_RUS.md
+├── misc/
+│   └── images/
+│       └── project_diagram.png
+└── src/
+    ├── Vagrantfile
+    ├── Vagrantfile_task2
+    ├── install_docker.sh
+    ├── manager.sh
+    ├── worker.sh
+    ├── docker-compose_task1.yml
+    ├── docker-compose.yml
+    ├── nginx.conf
+    ├── portainer.yml
+    ├── .env.example
+    ├── services/
+    │   ├── database/
+    │   │   └── init.sql
+    │   ├── session-service/
+    │   ├── hotel-service/
+    │   ├── booking-service/
+    │   ├── payment-service/
+    │   ├── loyalty-service/
+    │   ├── report-service/
+    │   └── gateway-service/
+    ├── application_tests.postman_collection.json
+    └── REPORT.MD
+```
+
+## Проверка результата
+
+В отчёте приведены материалы, подтверждающие выполнение основных этапов:
+
+- Dockerfile и сравнение размеров обычной и multi-stage сборки
+- запуск микросервисного приложения через Docker Compose
+- успешное прохождение Postman-тестов на локальном этапе
+- создание и удаление виртуальной машины Vagrant
+- запуск трёх VM и подключение узлов к Docker Swarm
+- развёртывание Stack на manager
+- настройка Nginx reverse proxy
+- успешное прохождение Postman-тестов после развёртывания в Swarm
+- список узлов и распределение задач по ним
+- визуализация распределения задач в Portainer
+
+Подробные скриншоты и ход выполнения находятся в [src/REPORT.MD](src/REPORT.MD).
+
+## Что я изучил
+
+- Как контейнеризировать набор Java-микросервисов
+- Как использовать multi-stage Dockerfile для уменьшения runtime-образов
+- Как запускать несколько взаимосвязанных сервисов с Docker Compose
+- Как использовать healthcheck и `depends_on` для управления порядком старта в Compose
+- Как создавать виртуальные машины и выполнять provisioning с помощью Vagrant
+- Как инициализировать Docker Swarm и подключать worker-узлы
+- Как публиковать образы в Docker Hub и использовать их при кластерном развёртывании
+- Как работает overlay network и DNS-обнаружение сервисов в Swarm
+- Как ограничивать размещение сервисов с помощью placement constraints
+- Как организовать внешний доступ через Nginx reverse proxy
+- Как проверять API через Postman и наблюдать за состоянием кластера через Portainer
+
+## Границы проекта и дальнейшее развитие
+
+Текущая конфигурация демонстрирует работу микросервисного приложения в Docker Swarm, но не является отказоустойчивой production-архитектурой. При дальнейшем развитии я бы уделил внимание следующим направлениям.
+
+### Безопасность
+
+- Не использовать стандартные учётные данные RabbitMQ в рабочем окружении.
+- Ограничить доступ к Docker socket: подключение `/var/run/docker.sock` к Portainer Agent фактически предоставляет агенту широкие полномочия над Docker Engine узла
+- Защитить интерфейс Portainer и не публиковать административные порты в недоверенную сеть
+- Фиксировать образы по digest и регулярно сканировать их на уязвимости
+
+### Надёжность и эксплуатация
+
+- Добавить healthcheck для Java-микросервисов и настроить политику обновления/отката Swarm-сервисов
+- Рассмотреть несколько manager-узлов для отказоустойчивости control plane. Один manager не обеспечивает HA кластера
+- Продумать резервное копирование PostgreSQL и RabbitMQ, а также восстановление данных
+- Учитывать, что PostgreSQL и RabbitMQ размещаются с одной репликой на manager, а локальные named volumes не обеспечивают автоматическую репликацию данных между узлами
+- Добавить централизованные логи, метрики, алертинг и мониторинг состояния сервисов
+- Перенести параметры окружения из `.env` в безопасное управление конфигурацией и секретами
+
+### Сборка и доставка
+
+- Добавить CI pipeline для автоматической сборки, тестирования, сканирования и публикации образов
+- Использовать immutable image tags или digest вместо изменяемых тегов
+- Проверить multi-architecture сборку: runtime-образы в Dockerfile явно используют `arm64v8/eclipse-temurin`, поэтому перенос на x86_64-узлы потребует соответствующих amd64-образов или multi-platform manifest
+- Не пропускать тесты при сборке в CI без отдельного тестового этапа: сейчас в Dockerfile используется `mvn package -DskipTests`
+
+Это направления дальнейшего развития, а не функциональность, уже реализованная в проекте.
+
+## Ссылки
+
+- [Полное задание School 21](README_RUS.md)
+- [Подробный отчёт с командами и скриншотами](src/REPORT.MD)
+- [GitHub-профиль](https://github.com/Shanteve)
